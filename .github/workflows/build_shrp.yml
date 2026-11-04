@@ -1,4 +1,4 @@
-name: Build SHRP - Galaxy S20 SM8250
+name: Build SHRP
 
 on:
   workflow_dispatch:
@@ -21,17 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x1q
-            model: SM-G981N
-            device: Galaxy S20 5G
-          - target: y2q
-            model: SM-G986N
-            device: Galaxy S20+ 5G
-          - target: z3q
-            model: SM-G988N
-            device: Galaxy S20 Ultra 5G
-    name: SHRP - ${{ matrix.target }} (${{ matrix.model }})
+        target: [x1q, y2q, z3q]
     env:
       DEVICE_TREE_URL: https://github.com/GoRhanHee-World/android_device_samsung_sm8250_twrp.git
       DEVICE_TREE_BRANCH: ${{ matrix.target }}
@@ -139,12 +129,11 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: ${{ runner.temp }}/recovery-artifacts/*
           fail_on_unmatched_files: true
-          name: SHRP - ${{ matrix.device }} (${{ matrix.model }}) - ${{ steps.archive.outputs.date_short }}
+          name: shrp-${{ matrix.target }}-${{ steps.archive.outputs.date_short }}
           tag_name: sm8250-shrp-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           body: |
             Recovery: SHRP
-            Series: Samsung Galaxy S20 / Qualcomm SM8250
-            Device: ${{ matrix.device }} (${{ matrix.model }}, ${{ matrix.target }})
+            Device: ${{ matrix.target }}
             Device tree: GoRhanHee-World/android_device_samsung_sm8250_twrp@${{ matrix.target }}
             Manifest: ${{ env.MANIFEST_BRANCH }}
             Target: recovery
