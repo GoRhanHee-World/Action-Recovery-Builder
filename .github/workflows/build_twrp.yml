@@ -1,6 +1,11 @@
 name: Build TWRP - Galaxy S20 SM8250
 
 on:
+  push:
+    branches:
+      - sm8250
+    paths:
+      - .github/workflows/build_twrp.yml
   workflow_dispatch:
 
 permissions:
