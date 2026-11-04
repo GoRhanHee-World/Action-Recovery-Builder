@@ -1,116 +1,151 @@
-name: Build TWRP
+name: Build TWRP - Galaxy S20 SM8250
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: sm8250-twrp-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     if: github.event.repository.owner.id == github.event.sender.id
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        target: [o1s, p3s, r9s, t2s]
+        include:
+          - target: x1q
+            model: SM-G981N
+            device: Galaxy S20 5G
+          - target: y2q
+            model: SM-G986N
+            device: Galaxy S20+ 5G
+          - target: z3q
+            model: SM-G988N
+            device: Galaxy S20 Ultra 5G
+    name: TWRP - ${{ matrix.target }} (${{ matrix.model }})
+    env:
+      DEVICE_TREE_URL: https://github.com/GoRhanHee-World/android_device_samsung_sm8250_twrp.git
+      DEVICE_TREE_BRANCH: ${{ matrix.target }}
+      DEVICE_PATH: device/samsung/${{ matrix.target }}
+      DEVICE_NAME: ${{ matrix.target }}
+      RECOVERY_NAME: TWRP
+      MANIFEST_BRANCH: twrp-12.1
     steps:
+      - name: Check out
+        uses: actions/checkout@v4
 
-    - name: Check Out
-      uses: actions/checkout@v4
+      - name: Cleanup
+        uses: rokibhasansagar/slimhub_actions@main
 
-    - name: Cleanup
-      uses: rokibhasansagar/slimhub_actions@main
+      - name: Prepare the environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache cpio curl flex g++-multilib gcc-multilib \
+            git gnupg gperf imagemagick lib32ncurses-dev lib32z1-dev libc6-dev-i386 \
+            libelf-dev liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev libxml2 \
+            libxml2-utils lzop pngcrush python3 rsync schedtool squashfs-tools \
+            tar unzip xsltproc zip zlib1g-dev
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "$HOME/bin"
+          curl --fail --location https://storage.googleapis.com/git-repo-downloads/repo --output "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
 
-    - name: Prepare the environment
-      run: |
-        sudo apt update && sudo apt upgrade -y
-        DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
-            linux-modules-extra-$(uname -r) \
-            gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib \
-            libc6-dev lib32ncurses-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils \
-            xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses-dev libsdl1.2-dev \
-            build-essential libgtk-3-dev libglu1-mesa-dev freeglut3-dev git libxml2 lzop pngcrush schedtool squashfs-tools \
-            imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses6 python3 tar
+      - name: Install OpenJDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 'latest'
+      - name: Initialize sources
+        run: |
+          mkdir workspace
+          cd workspace
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b "$MANIFEST_BRANCH"
 
-    - name: Install OpenJDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '11'
+      - name: Sync sources
+        working-directory: workspace
+        run: |
+          repo sync -c -j"$(nproc --all)" --force-sync --no-clone-bundle --no-tags
 
-    - name: Install repo
-      run: |
-        mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
+      - name: Clone device tree and Qualcomm dependencies
+        working-directory: workspace
+        run: |
+          git clone --depth=1 --branch "$DEVICE_TREE_BRANCH" "$DEVICE_TREE_URL" "$DEVICE_PATH"
+          if [[ -d device/qcom/twrp-common/.git ]]; then
+            git -C device/qcom/twrp-common fetch --depth=1 https://github.com/TeamWin/android_device_qcom_twrp-common.git android-12.1
+            git -C device/qcom/twrp-common checkout --detach FETCH_HEAD
+          else
+            git clone --depth=1 --branch android-12.1 https://github.com/TeamWin/android_device_qcom_twrp-common.git device/qcom/twrp-common
+          fi
+          test -f "$DEVICE_PATH/BoardConfig.mk"
+          test -f "$DEVICE_PATH/prebuilt/kernel"
+          test -f "$DEVICE_PATH/prebuilt/dtb.img"
+          test -f "$DEVICE_PATH/prebuilt/dtbo.img"
 
-    - name: Initialize repo
-      run: |
-        mkdir workspace
-        cd workspace
-        echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
-      id: pwd
+      - name: Set swap space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 12
 
-    - name: Repo Sync
-      run: |
-        repo sync -j$(nproc --all) --force-sync
-      working-directory: workspace
+      - name: Build recovery
+        working-directory: workspace
+        run: |
+          set +u
+          source build/envsetup.sh
+          lunch twrp_${DEVICE_NAME}-eng
+          mka recoveryimage -j"$(nproc --all)"
 
-    - name: Clone device tree
-      run: |
-        git clone https://github.com/xfwdrev/android_device_samsung_exynos2100.git -b android-12.1 ./device/samsung/exynos2100
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+      - name: Archive recovery
+        id: archive
+        working-directory: workspace
+        run: |
+          output_dir="out/target/product/$DEVICE_NAME"
+          artifact_dir="$RUNNER_TEMP/recovery-artifacts"
+          date_short="$(date -u +%Y%m%d)"
+          artifact_name="${RECOVERY_NAME}-sm8250-${DEVICE_NAME}-${date_short}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test -s "$output_dir/recovery.img"
+          mkdir -p "$artifact_dir"
+          cp "$output_dir/recovery.img" "$artifact_dir/$artifact_name.img"
+          tar -C "$output_dir" -cf "$artifact_dir/$artifact_name.tar" recovery.img
+          shopt -s nullglob
+          for archive in "$output_dir"/*.zip; do
+            cp "$archive" "$artifact_dir/"
+          done
+          printf 'date_short=%s\n' "$date_short" >> "$GITHUB_OUTPUT"
+          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
 
-    - name: Set Swap Space
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 12
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.artifact_name }}
+          path: ${{ runner.temp }}/recovery-artifacts/*
+          if-no-files-found: error
 
-    - name: Building recovery
-      run: |
-        export ALLOW_MISSING_DEPENDENCIES=true
-        source build/envsetup.sh
-        lunch twrp_${{ matrix.target }}-eng && make clean && mka recoveryimage -j$(nproc --all)
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-    - name: Set Date Variables
-      run: |
-        echo "DATE_SHORT=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
-        echo "DATE_TAG=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
-        echo "DATE_LONG=$(date +%Y%m%d-%H%M)" >> $GITHUB_OUTPUT
-      id: date
-
-    - name: Archive the files
-      run: |
-        ls -a ${{ steps.pwd.outputs.workspace-folder }}/out/target/product/ && echo
-        ls -a ${{ steps.pwd.outputs.workspace-folder }}/out/target/product/${{ matrix.target }}/ && echo
-        cd out/target/product/${{ matrix.target }}
-        IMG_NAME="twrp-3.7.1_12-0-${{ matrix.target }}.img"
-        TAR_NAME="twrp-3.7.1_12-0-${{ matrix.target }}.tar"
-        cp recovery.img "$IMG_NAME"
-        tar -cvf "$TAR_NAME" recovery.img
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-    - name: Upload to Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: | 
-          workspace/out/target/product/${{ matrix.target }}/twrp-3.7.1_12-0-${{ matrix.target }}.img
-          workspace/out/target/product/${{ matrix.target }}/twrp-3.7.1_12-0-${{ matrix.target }}.tar
-        name: twrp-${{ matrix.target }}-${{ steps.date.outputs.DATE_SHORT }}
-        tag_name: ${{ steps.date.outputs.DATE_TAG }}
-        body: |
-          Manifest: twrp-12.1
-          Device: ${{ matrix.target }}
-          Target: recovery
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          target_commitish: ${{ github.sha }}
+          files: ${{ runner.temp }}/recovery-artifacts/*
+          fail_on_unmatched_files: true
+          name: TWRP - ${{ matrix.device }} (${{ matrix.model }}) - ${{ steps.archive.outputs.date_short }}
+          tag_name: sm8250-twrp-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          body: |
+            Recovery: TWRP
+            Series: Samsung Galaxy S20 / Qualcomm SM8250
+            Device: ${{ matrix.device }} (${{ matrix.model }}, ${{ matrix.target }})
+            Device tree: GoRhanHee-World/android_device_samsung_sm8250_twrp@${{ matrix.target }}
+            Manifest: ${{ env.MANIFEST_BRANCH }}
+            Target: recovery
