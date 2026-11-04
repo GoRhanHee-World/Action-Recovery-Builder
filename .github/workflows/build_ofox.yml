@@ -88,6 +88,7 @@ jobs:
         working-directory: workspace
         run: |
           set +u
+          export ALLOW_MISSING_DEPENDENCIES=true
           export FOX_BUILD_DEVICE="$DEVICE_NAME"
           source build/envsetup.sh
           lunch twrp_${DEVICE_NAME}-eng

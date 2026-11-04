@@ -93,6 +93,7 @@ jobs:
         working-directory: workspace
         run: |
           set +u
+          export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
           lunch twrp_${DEVICE_NAME}-eng
           mka recoveryimage -j"$(nproc --all)"
