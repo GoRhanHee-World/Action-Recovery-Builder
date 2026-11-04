@@ -131,6 +131,4 @@ jobs:
           body: |
             Recovery: OrangeFox
             Device: ${{ matrix.target }}
-            Device tree: GoRhanHee-World/android_device_samsung_sm8250_twrp@${{ matrix.target }}
             Manifest: ${{ env.MANIFEST_BRANCH }}
-            Target: recovery
