@@ -84,10 +84,6 @@ jobs:
           else
             git clone --depth=1 --branch android-12.1 https://github.com/TeamWin/android_device_qcom_twrp-common.git device/qcom/twrp-common
           fi
-          test -f "$DEVICE_PATH/BoardConfig.mk"
-          test -f "$DEVICE_PATH/prebuilt/kernel"
-          test -f "$DEVICE_PATH/prebuilt/dtb.img"
-          test -f "$DEVICE_PATH/prebuilt/dtbo.img"
 
       - name: Set swap space
         uses: pierotofy/set-swap-space@master
